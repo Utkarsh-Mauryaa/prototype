@@ -1,0 +1,32 @@
+{
+  "task": "fakenews",
+  "model_architecture": "BiLSTM",
+  "epochs": 5,
+  "batch_size": 32,
+  "max_length": 200,
+  "train_time_sec": 24.67,
+  "test_metrics": {
+    "loss": 0.1523,
+    "accuracy": 0.944,
+    "f1": 0.9435,
+    "precision": 0.9512,
+    "recall": 0.936,
+    "f1_macro": 0.944,
+    "precision_macro": 0.9441,
+    "recall_macro": 0.944
+  },
+  "confusion_matrix": [
+    [
+      476,
+      24
+    ],
+    [
+      32,
+      468
+    ]
+  ],
+  "labels": {
+    "0": "Real News",
+    "1": "Fake News"
+  }
+}

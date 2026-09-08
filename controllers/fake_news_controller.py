@@ -23,12 +23,30 @@ MODELS_DIR = os.path.join(BASE_DIR, 'models')
 VECTORIZER_PATH = os.path.join(MODELS_DIR, 'fake_news_tfidf_vectorizer.joblib')
 MODEL_PATH = os.path.join(MODELS_DIR, 'fake_news_best_model.joblib')
 
-# In-memory cached model and vectorizer
+# In-memory cached models and vectorizer
 _vectorizer = None
 _model = None
+_bert_tokenizer = None
+_bert_model = None
+_bert_device = None
+
+def get_fake_news_bert():
+    """Loads and caches fine-tuned BERT model (Highest F1: 97.02%)."""
+    global _bert_tokenizer, _bert_model, _bert_device
+    if _bert_model is None:
+        import torch
+        from transformers import AutoTokenizer, AutoModelForSequenceClassification
+        _bert_device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        bert_path = os.path.join(MODELS_DIR, 'deep_learning', 'fakenews', 'bert-base-uncased', 'best_model')
+        if not os.path.exists(bert_path):
+            raise FileNotFoundError(f"BERT model path not found at: {bert_path}")
+        _bert_tokenizer = AutoTokenizer.from_pretrained(bert_path)
+        _bert_model = AutoModelForSequenceClassification.from_pretrained(bert_path).to(_bert_device)
+        _bert_model.eval()
+    return _bert_tokenizer, _bert_model, _bert_device
 
 def get_fake_news_model():
-    """Loads and caches model and vectorizer in memory."""
+    """Loads and caches baseline SVM model and vectorizer in memory."""
     global _vectorizer, _model
     if _vectorizer is None:
         if not os.path.exists(VECTORIZER_PATH):
@@ -92,14 +110,25 @@ def handle_fake_news_prediction(payload: FakeNewsInput) -> Dict[str, Any]:
     # Combined input for model inference
     combined_input = f"{headline} {article_text}".strip()
 
-    # Step 3: Run Model Inference
-    vectorizer, model = get_fake_news_model()
-    vec = vectorizer.transform([combined_input])
-
-    # Predict probabilities: [prob_real (class 0), prob_fake (class 1)]
-    probabilities = model.predict_proba(vec)[0]
-    prob_real = float(probabilities[0])
-    prob_fake = float(probabilities[1])
+    # Step 3: Run Model Inference using Best F1 Model (BERT: 97.02% F1)
+    model_name = "BERT (bert-base-uncased | Best F1: 97.02%)"
+    try:
+        tok, bert_model, device = get_fake_news_bert()
+        import torch
+        with torch.no_grad():
+            inputs = tok(combined_input, return_tensors='pt', truncation=True, max_length=512).to(device)
+            logits = bert_model(**inputs).logits
+            probabilities = torch.softmax(logits, dim=1)[0].cpu().numpy()
+            prob_real = float(probabilities[0])
+            prob_fake = float(probabilities[1])
+    except Exception as err:
+        # Graceful fallback to Linear SVM baseline if PyTorch / BERT is unavailable
+        vectorizer, model = get_fake_news_model()
+        vec = vectorizer.transform([combined_input])
+        probabilities = model.predict_proba(vec)[0]
+        prob_real = float(probabilities[0])
+        prob_fake = float(probabilities[1])
+        model_name = f"Linear SVM Baseline (Fallback | F1: 93.00%)"
 
     # Determine Verdict and Confidence Score
     if prob_fake >= 0.5:
@@ -116,6 +145,7 @@ def handle_fake_news_prediction(payload: FakeNewsInput) -> Dict[str, Any]:
         "status": "success",
         "verdict": verdict,
         "confidence_score": confidence_score,
+        "model_used": model_name,
         "input_type": input_type,
         "headline_analyzed": headline[:200],
         "preview_text": article_text[:300] + ("..." if len(article_text) > 300 else ""),

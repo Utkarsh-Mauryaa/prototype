@@ -1,0 +1,36 @@
+{
+  "task": "hatespeech",
+  "model_architecture": "bert-base-uncased",
+  "epochs": 3,
+  "batch_size": 8,
+  "effective_batch_size": 16,
+  "max_length": 256,
+  "test_metrics": {
+    "eval_loss": 0.5041863322257996,
+    "eval_accuracy": 0.776,
+    "eval_f1": 0.7808,
+    "eval_precision": 0.7644,
+    "eval_recall": 0.798,
+    "eval_f1_macro": 0.7759,
+    "eval_precision_macro": 0.7765,
+    "eval_recall_macro": 0.776,
+    "eval_runtime": 2.2545,
+    "eval_samples_per_second": 443.553,
+    "eval_steps_per_second": 27.944,
+    "epoch": 3.0
+  },
+  "confusion_matrix": [
+    [
+      377,
+      123
+    ],
+    [
+      101,
+      399
+    ]
+  ],
+  "labels": {
+    "0": "Safe",
+    "1": "Hate Speech / Hostile"
+  }
+}

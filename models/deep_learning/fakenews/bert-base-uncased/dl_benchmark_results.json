@@ -1,0 +1,36 @@
+{
+  "task": "fakenews",
+  "model_architecture": "bert-base-uncased",
+  "epochs": 3,
+  "batch_size": 8,
+  "effective_batch_size": 16,
+  "max_length": 256,
+  "test_metrics": {
+    "eval_loss": 0.13200031220912933,
+    "eval_accuracy": 0.97,
+    "eval_f1": 0.9702,
+    "eval_precision": 0.9644,
+    "eval_recall": 0.976,
+    "eval_f1_macro": 0.97,
+    "eval_precision_macro": 0.9701,
+    "eval_recall_macro": 0.97,
+    "eval_runtime": 3.0911,
+    "eval_samples_per_second": 323.508,
+    "eval_steps_per_second": 20.381,
+    "epoch": 3.0
+  },
+  "confusion_matrix": [
+    [
+      482,
+      18
+    ],
+    [
+      12,
+      488
+    ]
+  ],
+  "labels": {
+    "0": "Real News",
+    "1": "Fake News"
+  }
+}

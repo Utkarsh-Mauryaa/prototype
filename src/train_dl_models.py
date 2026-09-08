@@ -188,7 +188,7 @@ def main():
         gradient_accumulation_steps=args.grad_accum,
         num_train_epochs=args.epochs,
         weight_decay=0.01,
-        warmup_ratio=0.1,
+        warmup_steps=0.1,
         fp16=fp16,
         logging_steps=50,
         load_best_model_at_end=True,
@@ -203,7 +203,7 @@ def main():
         args=training_args,
         train_dataset=tokenized_datasets["train"],
         eval_dataset=tokenized_datasets["val"],
-        tokenizer=tokenizer,
+        processing_class=tokenizer,
         data_collator=data_collator,
         compute_metrics=compute_metrics,
     )
@@ -255,6 +255,26 @@ def main():
     with open(metrics_file, "w") as f:
         json.dump(benchmark_payload, f, indent=2)
     print(f"[Saving] Metrics benchmark saved to: {metrics_file}")
+
+    # Generate and Save Confusion Matrix Plot
+    try:
+        import matplotlib.pyplot as plt
+        import seaborn as sns
+        plt.figure(figsize=(6, 5))
+        sns.heatmap(cm, annot=True, fmt="d", cmap="Blues",
+                    xticklabels=[id2label[0], id2label[1]],
+                    yticklabels=[id2label[0], id2label[1]])
+        plt.title(f"{args.model_name} - Confusion Matrix ({args.task.upper()})")
+        plt.xlabel("Predicted")
+        plt.ylabel("Actual")
+        plt.tight_layout()
+        cm_plot_path = os.path.join(output_dir, "test_confusion_matrix.png")
+        plt.savefig(cm_plot_path, dpi=300)
+        plt.close()
+        print(f"[Saving] Confusion matrix plot saved to: {cm_plot_path}")
+    except Exception as e:
+        print(f"[Warning] Could not generate confusion matrix plot: {e}")
+
     print("\n[Done] Training and evaluation complete!\n")
 
 if __name__ == "__main__":

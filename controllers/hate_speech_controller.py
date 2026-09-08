@@ -25,12 +25,30 @@ MODELS_DIR = os.path.join(BASE_DIR, 'models')
 VECTORIZER_PATH = os.path.join(MODELS_DIR, 'hate_speech_tfidf_vectorizer.joblib')
 MODEL_PATH = os.path.join(MODELS_DIR, 'hate_speech_best_model.joblib')
 
-# In-memory cached model and vectorizer
+# In-memory cached models and vectorizer
 _vectorizer = None
 _model = None
+_bert_tokenizer = None
+_bert_model = None
+_bert_device = None
+
+def get_hate_speech_bert():
+    """Loads and caches fine-tuned BERT model (Highest F1: 78.08%)."""
+    global _bert_tokenizer, _bert_model, _bert_device
+    if _bert_model is None:
+        import torch
+        from transformers import AutoTokenizer, AutoModelForSequenceClassification
+        _bert_device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        bert_path = os.path.join(MODELS_DIR, 'deep_learning', 'hatespeech', 'bert-base-uncased', 'best_model')
+        if not os.path.exists(bert_path):
+            raise FileNotFoundError(f"BERT model path not found at: {bert_path}")
+        _bert_tokenizer = AutoTokenizer.from_pretrained(bert_path)
+        _bert_model = AutoModelForSequenceClassification.from_pretrained(bert_path).to(_bert_device)
+        _bert_model.eval()
+    return _bert_tokenizer, _bert_model, _bert_device
 
 def get_hate_speech_model():
-    """Loads and caches model and vectorizer in memory."""
+    """Loads and caches baseline SVM model and vectorizer in memory."""
     global _vectorizer, _model
     if _vectorizer is None:
         if not os.path.exists(VECTORIZER_PATH):
@@ -83,14 +101,25 @@ def handle_hate_speech_prediction(payload: HateSpeechInput) -> Dict[str, Any]:
             )
         text_to_analyze = raw_text
 
-    # Step 3: Run Model Inference
-    vectorizer, model = get_hate_speech_model()
-    vec = vectorizer.transform([text_to_analyze])
-
-    # Predict probabilities: [prob_safe (class 0), prob_hostile (class 1)]
-    probabilities = model.predict_proba(vec)[0]
-    prob_safe = float(probabilities[0])
-    prob_hostile = float(probabilities[1])
+    # Step 3: Run Model Inference using Best F1 Model (BERT: 78.08% F1)
+    model_name = "BERT (bert-base-uncased | Best F1: 78.08%)"
+    try:
+        tok, bert_model, device = get_hate_speech_bert()
+        import torch
+        with torch.no_grad():
+            inputs = tok(text_to_analyze, return_tensors='pt', truncation=True, max_length=256).to(device)
+            logits = bert_model(**inputs).logits
+            probabilities = torch.softmax(logits, dim=1)[0].cpu().numpy()
+            prob_safe = float(probabilities[0])
+            prob_hostile = float(probabilities[1])
+    except Exception as err:
+        # Graceful fallback to Linear SVM baseline if PyTorch / BERT is unavailable
+        vectorizer, model = get_hate_speech_model()
+        vec = vectorizer.transform([text_to_analyze])
+        probabilities = model.predict_proba(vec)[0]
+        prob_safe = float(probabilities[0])
+        prob_hostile = float(probabilities[1])
+        model_name = f"Linear SVM Baseline (Fallback | F1: 72.59%)"
 
     # Determine Verdict and Confidence Score
     if prob_hostile >= 0.5:
@@ -107,6 +136,7 @@ def handle_hate_speech_prediction(payload: HateSpeechInput) -> Dict[str, Any]:
         "status": "success",
         "verdict": verdict,
         "confidence_score": confidence_score,
+        "model_used": model_name,
         "input_type": input_type,
         "preview_text": text_to_analyze[:300] + ("..." if len(text_to_analyze) > 300 else ""),
         "inference_time_ms": inference_time
@@ -152,13 +182,24 @@ async def handle_hate_speech_media(file: UploadFile) -> Dict[str, Any]:
                 detail="No recognizable speech was detected in the uploaded audio/video file."
             )
 
-        # Run Model Inference on the transcribed text
-        vectorizer, model = get_hate_speech_model()
-        vec = vectorizer.transform([transcribed_text])
-
-        probabilities = model.predict_proba(vec)[0]
-        prob_safe = float(probabilities[0])
-        prob_hostile = float(probabilities[1])
+        # Run Model Inference using Best F1 Model (BERT: 78.08% F1)
+        model_name = "BERT (bert-base-uncased | Best F1: 78.08%)"
+        try:
+            tok, bert_model, device = get_hate_speech_bert()
+            import torch
+            with torch.no_grad():
+                inputs = tok(transcribed_text, return_tensors='pt', truncation=True, max_length=256).to(device)
+                logits = bert_model(**inputs).logits
+                probabilities = torch.softmax(logits, dim=1)[0].cpu().numpy()
+                prob_safe = float(probabilities[0])
+                prob_hostile = float(probabilities[1])
+        except Exception as err:
+            vectorizer, model = get_hate_speech_model()
+            vec = vectorizer.transform([transcribed_text])
+            probabilities = model.predict_proba(vec)[0]
+            prob_safe = float(probabilities[0])
+            prob_hostile = float(probabilities[1])
+            model_name = f"Linear SVM Baseline (Fallback | F1: 72.59%)"
 
         if prob_hostile >= 0.5:
             verdict = "Hate Speech / Hostile"
@@ -173,6 +214,7 @@ async def handle_hate_speech_media(file: UploadFile) -> Dict[str, Any]:
             "status": "success",
             "verdict": verdict,
             "confidence_score": confidence_score,
+            "model_used": model_name,
             "input_type": media_type,
             "transcribed_text": transcribed_text,
             "preview_text": transcribed_text[:300] + ("..." if len(transcribed_text) > 300 else ""),

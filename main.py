@@ -15,12 +15,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from controllers.fake_news_controller import (
     FakeNewsInput,
     handle_fake_news_prediction,
+    get_fake_news_bert,
     get_fake_news_model
 )
 from controllers.hate_speech_controller import (
     HateSpeechInput,
     handle_hate_speech_prediction,
     handle_hate_speech_media,
+    get_hate_speech_bert,
     get_hate_speech_model
 )
 from controllers.media_utils import get_whisper_model
@@ -30,10 +32,20 @@ async def lifespan(app: FastAPI):
     """Preloads ML models and Whisper into memory at startup."""
     print("\n[Startup] Pre-loading ML models into memory...")
     try:
-        get_fake_news_model()
-        print("  ✓ Fake News Model & Vectorizer cached.")
-        get_hate_speech_model()
-        print("  ✓ Hate Speech Model & Vectorizer cached.")
+        try:
+            get_fake_news_bert()
+            print("  ✓ Fake News Model: BERT bert-base-uncased cached (Highest F1: 97.02%).")
+        except Exception as e:
+            get_fake_news_model()
+            print(f"  ✓ Fake News Model: SVM fallback cached ({e}).")
+
+        try:
+            get_hate_speech_bert()
+            print("  ✓ Hate Speech Model: BERT bert-base-uncased cached (Highest F1: 78.08%).")
+        except Exception as e:
+            get_hate_speech_model()
+            print(f"  ✓ Hate Speech Model: SVM fallback cached ({e}).")
+
         get_whisper_model()
         print("  ✓ OpenAI Whisper Base Model cached.")
         print("[Startup] All models ready for sub-second multimodal inference!\n")
@@ -77,8 +89,8 @@ def health_check():
     return {
         "status": "healthy",
         "models": {
-            "fake_news": "Linear SVM (93.00% F1)",
-            "hate_speech": "Linear SVM / Naive Bayes (72.59% F1)",
+            "fake_news": "BERT bert-base-uncased (Highest F1: 97.02%)",
+            "hate_speech": "BERT bert-base-uncased (Highest F1: 78.08%)",
             "audio_transcription": "OpenAI Whisper Base"
         }
     }

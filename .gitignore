@@ -64,3 +64,8 @@ Thumbs.db
 
 # Local runtime logs
 *.log
+
+# Handover documentation
+PROJECT_HANDOVER_DOCUMENTATION.md
+project-handover-documentation.md
+
